@@ -105,6 +105,7 @@ export interface RecordResponseResult {
   friction: FrictionVerdict;
   load: CognitiveLoadEstimate;
   unlocked: { conceptId: string; label: string }[];
+  misconceptions?: { decayed: string[]; repaired: string[] };
 }
 
 export class TwinService {
@@ -287,8 +288,12 @@ export class TwinService {
     }
 
     /* ---- misconception bookkeeping ---- */
+    let misconceptionUpdate: { decayed: string[]; repaired: string[] } | undefined;
     if (input.misconceptionId) {
       this.noteMisconception(learner.id, input.misconceptionId, conceptId, 0.7);
+    } else if (input.correct && input.hintsUsed === 0) {
+      // Unhinted correct answers are the evidence that closes the loop.
+      misconceptionUpdate = this.creditCorrectAnswer(learner.id, conceptId);
     }
 
     /* ---- error pattern weights ---- */
@@ -353,6 +358,7 @@ export class TwinService {
       friction: verdict,
       load,
       unlocked,
+      misconceptions: misconceptionUpdate,
     };
   }
 
@@ -511,6 +517,43 @@ export class TwinService {
       learnerId, conceptId: conceptId ?? '', misconceptionId, confidence,
     });
     this.logEvent(learnerId, 'misconception', conceptId, { code: m?.code, confidence });
+  }
+
+  /** A correct answer is evidence AGAINST any misconception active on that
+   *  concept. Without this the detection loop never closes: the system would
+   *  keep repairing something the learner has already fixed. */
+  creditCorrectAnswer(learnerId: string, conceptId: string): { decayed: string[]; repaired: string[] } {
+    const rows = this.repos.db.all<{ misconception_id: string; confidence: number; concept_id: string | null }>(
+      `SELECT misconception_id, confidence, concept_id FROM learner_misconceptions
+       WHERE learner_id=? AND status='active' AND (concept_id=? OR concept_id IS NULL)`,
+      [learnerId, conceptId],
+    );
+    const decayed: string[] = [];
+    const repaired: string[] = [];
+    const now = new Date().toISOString();
+
+    for (const r of rows) {
+      // Only count evidence against a misconception actually tied to this concept.
+      if (r.concept_id && r.concept_id !== conceptId) continue;
+      const next = round(Number(r.confidence) * 0.55, 4);
+      const code = this.repos.misconceptions.get(r.misconception_id)?.code ?? r.misconception_id;
+      if (next < 0.25) {
+        this.repos.db.run(
+          `UPDATE learner_misconceptions SET status='repaired', confidence=?, repaired_at=?, last_at=?
+           WHERE learner_id=? AND misconception_id=?`,
+          [next, now, now, learnerId, r.misconception_id],
+        );
+        repaired.push(code);
+        bus.emit('misconception.repaired', { learnerId, misconceptionId: r.misconception_id });
+      } else {
+        this.repos.db.run(
+          `UPDATE learner_misconceptions SET confidence=?, last_at=? WHERE learner_id=? AND misconception_id=?`,
+          [next, now, learnerId, r.misconception_id],
+        );
+        decayed.push(code);
+      }
+    }
+    return { decayed, repaired };
   }
 
   markMisconceptionRepaired(learnerId: string, misconceptionId: string): void {
