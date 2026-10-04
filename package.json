@@ -1,0 +1,29 @@
+{
+  "name": "lumen-os",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LUMEN OS - an adaptive accessibility operating system for education. Curriculum in, brain-shaped learning out.",
+  "license": "MIT",
+  "type": "module",
+  "engines": { "node": ">=22.5.0" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "node --experimental-sqlite --import tsx/esm src/index.ts",
+    "start": "node --experimental-sqlite dist/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --experimental-sqlite --experimental-strip-types --no-warnings --test 'src/**/*.test.ts'",
+    "seed": "node --experimental-sqlite --import tsx/esm src/cli/seed.ts",
+    "demo": "node --experimental-sqlite --import tsx/esm src/cli/demo.ts",
+    "doctor": "node --experimental-sqlite --import tsx/esm src/cli/doctor.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.68.0",
+    "fastify": "^5.6.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.9",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}
