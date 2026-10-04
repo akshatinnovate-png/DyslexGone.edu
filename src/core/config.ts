@@ -31,7 +31,7 @@ const bool = (k: string, d: boolean): boolean => {
   return /^(1|true|yes|on)$/i.test(v);
 };
 
-export type LlmMode = 'auto' | 'anthropic' | 'openai' | 'deterministic';
+export type LlmMode = 'auto' | 'anthropic' | 'groq' | 'openai' | 'deterministic';
 
 export const config = {
   env: str('NODE_ENV', 'development'),
@@ -77,6 +77,18 @@ export const config = {
     openaiKey: str('OPENAI_API_KEY', ''),
     openaiBaseUrl: str('OPENAI_BASE_URL', 'https://api.openai.com/v1'),
     openaiModel: str('OPENAI_MODEL', 'gpt-4o-mini'),
+    openaiModelFast: str('OPENAI_MODEL_FAST', ''),
+    // Groq speaks the OpenAI wire format, so it is the same client with a
+    // different base URL. gpt-oss-120b is the default author model: it is fast
+    // enough to generate a storyboard inside a request, and cheap enough to
+    // regenerate on an audit failure.
+    groqKey: str('GROQ_API_KEY', ''),
+    groqBaseUrl: str('GROQ_BASE_URL', 'https://api.groq.com/openai/v1'),
+    groqModel: str('GROQ_MODEL', 'openai/gpt-oss-120b'),
+    groqModelFast: str('GROQ_MODEL_FAST', 'llama-3.1-8b-instant'),
+    groqModelDeep: str('GROQ_MODEL_DEEP', 'openai/gpt-oss-120b'),
+    /** gpt-oss supports a reasoning budget; ignored by models that do not. */
+    groqReasoningEffort: str('GROQ_REASONING_EFFORT', 'medium') as 'low' | 'medium' | 'high',
     // Tiered routing: the orchestrator asks for a tier, the router picks the model.
     modelFast: str('LLM_MODEL_FAST', 'claude-haiku-4-5-20251001'),
     modelBalanced: str('LLM_MODEL_BALANCED', 'claude-sonnet-5-5'),
@@ -90,6 +102,15 @@ export const config = {
     // Hard spend ceiling per process lifetime (USD). 0 = unlimited.
     budgetUsd: num('LLM_BUDGET_USD', 0),
     perRequestBudgetUsd: num('LLM_REQUEST_BUDGET_USD', 0.75),
+  },
+
+  animation: {
+    /** 'auto' prefers a hand-tuned builder when one exists, then asks the model.
+     *  'model' always asks the model. 'curated' never does. */
+    authorMode: str('ANIMATION_AUTHOR_MODE', 'auto') as 'auto' | 'model' | 'curated',
+    maxBeats: num('ANIMATION_MAX_BEATS', 8),
+    maxRuntimeSec: num('ANIMATION_MAX_RUNTIME_SEC', 110),
+    repairAttempts: num('ANIMATION_REPAIR_ATTEMPTS', 2),
   },
 
   agents: {

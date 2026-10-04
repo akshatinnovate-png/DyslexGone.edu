@@ -8,6 +8,10 @@ const DEFAULTS: Record<string, Price> = {
   'claude-haiku-4-5-20251001': { in: 1, out: 5 },
   'claude-fable-5-1': { in: 3, out: 15 },
   'gpt-4o-mini': { in: 0.15, out: 0.6 },
+  'openai/gpt-oss-120b': { in: 0.15, out: 0.75 },
+  'openai/gpt-oss-20b': { in: 0.1, out: 0.5 },
+  'llama-3.1-8b-instant': { in: 0.05, out: 0.08 },
+  'llama-3.3-70b-versatile': { in: 0.59, out: 0.79 },
   'gpt-4o': { in: 2.5, out: 10 },
   deterministic: { in: 0, out: 0 },
 };

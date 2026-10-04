@@ -227,6 +227,62 @@ export function auditScene(scene: Scene): SceneAudit {
   return { ok: issues.length === 0, score, issues, notes };
 }
 
+export interface SceneSegment {
+  index: number;
+  startSec: number;
+  endSec: number;
+  durationSec: number;
+  beats: number;
+  narration: string;
+  title: string;
+}
+
+/** Split a scene into attention-sized chapters on beat boundaries.
+ *
+ *  When a scene runs longer than a learner's attention block, the answer is to
+ *  deliver it in parts - NOT to speed it up. Compressing an explanation for
+ *  someone who needs processing time is exactly backwards. */
+export function segmentScene(scene: Scene, maxSeconds: number): SceneSegment[] {
+  if (!scene.narration.length || scene.durationSec <= maxSeconds) {
+    return [{
+      index: 0, startSec: 0, endSec: scene.durationSec, durationSec: scene.durationSec,
+      beats: scene.narration.length, narration: scene.narration.map((n) => n.text).join(' '),
+      title: scene.title,
+    }];
+  }
+
+  const segments: SceneSegment[] = [];
+  let current: { start: number; texts: string[]; beats: number } | null = null;
+
+  const flush = (end: number) => {
+    if (!current || !current.beats) return;
+    segments.push({
+      index: segments.length,
+      startSec: round(current.start, 3),
+      endSec: round(end, 3),
+      durationSec: round(end - current.start, 3),
+      beats: current.beats,
+      narration: current.texts.join(' '),
+      title: `${scene.title} — part ${segments.length + 1}`,
+    });
+    current = null;
+  };
+
+  for (const beat of scene.narration) {
+    const end = beat.at + beat.durationSec;
+    if (!current) current = { start: beat.at, texts: [], beats: 0 };
+    // Keep a beat whole: never cut an explanation mid-sentence.
+    if (end - current.start > maxSeconds && current.beats > 0) {
+      flush(beat.at);
+      current = { start: beat.at, texts: [], beats: 0 };
+    }
+    current.texts.push(beat.text);
+    current.beats += 1;
+  }
+  flush(scene.durationSec);
+  return segments;
+}
+
 /** Slow a finished scene down (or speed it up) without rebuilding it. */
 export function repace(scene: Scene, multiplier: number): Scene {
   const m = Math.max(0.3, multiplier);

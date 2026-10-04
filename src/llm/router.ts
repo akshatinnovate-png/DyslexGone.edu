@@ -1,7 +1,7 @@
 import type { GenRequest, GenResponse, LlmProvider, ProviderName, Tier } from './types.js';
 import { deterministic } from './providers/deterministic.js';
 import { AnthropicProvider } from './providers/anthropic.js';
-import { OpenAiCompatProvider } from './providers/openai.js';
+import { groqProvider, openAiProvider } from './providers/openai.js';
 import { config } from '../core/config.js';
 import { logger } from '../core/logger.js';
 import { LruCache, SingleFlight } from '../core/cache.js';
@@ -29,7 +29,8 @@ export interface RouterStats {
  *  graceful degradation to the offline engine. */
 export class ModelRouter {
   private readonly anthropic = new AnthropicProvider();
-  private readonly openai = new OpenAiCompatProvider();
+  private readonly groq = groqProvider;
+  private readonly openai = openAiProvider;
   private readonly breakers = new Map<ProviderName, CircuitBreaker>();
   private readonly cache = new LruCache<GenResponse>(2000, config.llm.cacheTtlMs);
   private readonly flight = new SingleFlight<GenResponse>();
@@ -40,7 +41,7 @@ export class ModelRouter {
   private db: Db | null = null;
 
   constructor() {
-    for (const n of ['anthropic', 'openai', 'deterministic'] as ProviderName[]) {
+    for (const n of ['anthropic', 'groq', 'openai', 'deterministic'] as ProviderName[]) {
       this.breakers.set(n, new CircuitBreaker({ name: `llm:${n}`, failureThreshold: 4, openMs: 15_000 }));
     }
   }
@@ -52,9 +53,11 @@ export class ModelRouter {
     const mode = config.llm.mode;
     if (mode === 'deterministic') return [deterministic];
     if (mode === 'anthropic') return [this.anthropic, deterministic];
+    if (mode === 'groq') return [this.groq, deterministic];
     if (mode === 'openai') return [this.openai, deterministic];
     const auto: LlmProvider[] = [];
     if (this.anthropic.available()) auto.push(this.anthropic);
+    if (this.groq.available()) auto.push(this.groq);
     if (this.openai.available()) auto.push(this.openai);
     auto.push(deterministic);
     return auto;
@@ -176,7 +179,7 @@ export class ModelRouter {
   stats(): RouterStats {
     return {
       mode: config.llm.mode,
-      providers: ([this.anthropic, this.openai, deterministic] as LlmProvider[]).map((p) => ({
+      providers: ([this.anthropic, this.groq, this.openai, deterministic] as LlmProvider[]).map((p) => ({
         name: p.name,
         available: p.available(),
         circuit: this.breakers.get(p.name)!.state,

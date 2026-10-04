@@ -1,7 +1,7 @@
 import type { JsonSchema } from './jsonschema.js';
 
 export type Tier = 'fast' | 'balanced' | 'deep';
-export type ProviderName = 'anthropic' | 'openai' | 'deterministic';
+export type ProviderName = 'anthropic' | 'groq' | 'openai' | 'deterministic';
 
 export interface GenMessage { role: 'user' | 'assistant'; content: string; }
 
