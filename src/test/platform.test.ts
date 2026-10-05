@@ -360,3 +360,26 @@ describe('platform routes', () => {
     assert.equal(b.pipelines[0].agents.length, 7);
   });
 });
+
+describe('experiment conclusion under bandit allocation', () => {
+  test('a starved losing arm does not block a conclusion', async () => {
+    const { ExperimentService } = await import('../experiments/service.js');
+    const { makeRepos } = await import('../db/repos.js');
+    const { memoryDb } = await import('../db/sqlite.js');
+    const s = new ExperimentService(makeRepos(memoryDb()));
+    const e = s.create({
+      name: 'bandit', allocation: 'thompson',
+      arms: [{ key: 'good', label: 'Good', config: {} }, { key: 'bad', label: 'Bad', config: {} }],
+    });
+    for (let i = 0; i < 60; i++) {
+      const arm = s.assign(e.id, `l${i}`).arm.key;
+      s.observe(e.id, `l${i}`, arm === 'good' ? 0.95 : 0.1);
+    }
+    const report = s.report(e.id);
+    const bad = report.arms.find((a) => a.key === 'bad')!;
+    assert.ok(bad.observations < 12, 'the bandit should have starved the losing arm');
+    assert.equal(report.leader, 'good');
+    assert.equal(report.decision, 'conclude', report.recommendation);
+    assert.match(report.recommendation, /stopped sampling/);
+  });
+});

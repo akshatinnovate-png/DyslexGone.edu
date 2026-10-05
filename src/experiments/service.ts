@@ -254,7 +254,15 @@ export class ExperimentService {
     const leader = arms[0];
     const runnerUp = arms[1];
 
-    const enough = arms.every((a) => a.observations >= MIN_PER_ARM);
+    // Thompson sampling deliberately STARVES a losing arm - that starvation is
+    // itself the evidence. Demanding a minimum on every arm would mean a
+    // bandit-allocated experiment could never conclude, so the gate is: the
+    // leader must be well sampled, and either every arm cleared the minimum or
+    // the leader is overwhelming on a reasonable total.
+    const allClearedMinimum = arms.every((a) => a.observations >= MIN_PER_ARM);
+    const leaderWellSampled = leader.observations >= MIN_PER_ARM;
+    const enough = leaderWellSampled
+      && (allClearedMinimum || (leader.probabilityBest >= 0.99 && total >= MIN_PER_ARM * arms.length));
     const confident = leader.probabilityBest >= 0.95;
 
     const decision: ExperimentReport['decision'] =
@@ -265,12 +273,22 @@ export class ExperimentService {
 
     const recommendation = (() => {
       if (!enough) {
+        if (!leaderWellSampled) {
+          return `Not enough evidence yet: the leading arm "${leader.label}" has only `
+            + `${leader.observations} of ${MIN_PER_ARM} observations.`;
+        }
         const short = arms.filter((a) => a.observations < MIN_PER_ARM);
-        return `Not enough evidence yet. ${short.map((a) => `"${a.label}" has ${a.observations} of ${MIN_PER_ARM}`).join('; ')}.`;
+        return `"${leader.label}" leads at ${Math.round(leader.probabilityBest * 100)}%, but `
+          + `${short.map((a) => `"${a.label}" has only ${a.observations} observation(s)`).join('; ')}. `
+          + `Either keep running, or conclude with force if you accept the bandit's allocation as evidence.`;
       }
       if (decision === 'conclude') {
         const pct = Math.round(leader.probabilityBest * 100);
-        return `"${leader.label}" is best with ${pct}% probability `
+        const starved = arms.filter((a) => a.observations < MIN_PER_ARM);
+        const note = starved.length
+          ? `The allocator stopped sampling ${starved.map((a) => `"${a.label}"`).join(', ')}, which is itself the evidence. `
+          : '';
+        return `${note}"${leader.label}" is best with ${pct}% probability `
           + `(mean reward ${leader.meanReward} against ${runnerUp?.meanReward ?? 0}). `
           + `${leader.lift !== null && leader.lift > 0 ? `That is a ${Math.round(leader.lift * 100)}% lift over the control. ` : ''}`
           + `Ship it.`;
