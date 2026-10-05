@@ -12,6 +12,7 @@ import { describeLabs } from '../../engines/sim/lab.js';
 import { ALL_MODALITIES, ALL_NEEDS } from '../../domain/types.js';
 import { NEED_POLICIES } from '../../accessibility/profiles.js';
 import { mintApiKey } from '../plugins/guards.js';
+import { buildForgeAgents } from '../../agents/pipeline.js';
 import { badRequest } from '../../core/errors.js';
 
 const parse = <T>(schema: z.ZodType<T>, data: unknown): T => {
@@ -96,6 +97,14 @@ export async function coreRoutes(app: FastifyInstance, ctx: AppContext): Promise
       hostedAvailable: ctx.router.hasHostedModel(),
       providers: ctx.router.stats().providers,
       offlinePurposes: deterministic.registered(),
+    },
+    agents: buildForgeAgents().map((a) => ({ name: a.name, question: a.question })),
+    safety: {
+      checks: ['substance', 'safety', 'factuality', 'voice', 'reading_level',
+        'vocabulary', 'relevance', 'targets_misconception', 'overclaiming', 'age_appropriate'],
+      piiRedaction: true,
+      injectionNeutralisation: true,
+      qaHasVeto: true,
     },
     pedagogy: {
       masteryThreshold: config.pedagogy.masteryThreshold,

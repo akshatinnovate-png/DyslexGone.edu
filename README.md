@@ -177,6 +177,59 @@ success criteria, a hook that opens with the misconception, the lesson at three
 differentiated reading levels, a quiz whose answer key says *what it means if
 they chose B*, a worksheet, the misconceptions to watch for, and an activity.
 
+### 8. Seven agents, one blackboard, QA with veto
+
+```
+POST /v1/agents/forge  { "conceptSlug": "fraction-addition", "learnerId": "..." }
+```
+
+| Agent | Its one question |
+|---|---|
+| Curriculum | What must be taught, and what must come first? |
+| Learner | What does *this* student need right now? |
+| Accessibility | How should it be presented? |
+| Language | What do the words have to become? |
+| Animation | How can it be shown? |
+| Assessment | How will we know it landed? |
+| **QA / Safety** | **Is this fit to put in front of a child?** |
+
+Most of them call engines rather than models — the agent framing buys
+orchestration and traceability, not a reason to prompt for something we can
+compute. Every step records what it did and why; `GET /v1/agents/runs/:id`
+returns the whole trace.
+
+The QA agent has **veto**. Nothing ships that it rejects. It runs ten
+deterministic checks — known falsehoods, demeaning language, meta-language that
+breaks character, unfilled placeholders, reading level, whether the subject
+vocabulary survived, whether remediation actually contrasts the wrong idea with
+the right one — and each finding names its evidence.
+
+Content that *names* a misconception in order to refute it is allowed. Content
+that states one is blocked.
+
+Uploaded curriculum is treated as untrusted input: PII is redacted before
+anything reaches a hosted model, and instruction-like text in a PDF is
+neutralised rather than obeyed.
+
+### 9. It runs experiments on itself
+
+```
+POST /v1/experiments/compare-modalities
+  { "conceptId": "fraction-addition", "modalities": ["animation", "text"] }
+```
+```
+"animation" is best with 97% probability (mean reward 0.89 against 0.21).
+That is a 324% lift over the control. Ship it.
+```
+
+Arms are assigned by Thompson sampling, so a losing arm stops consuming
+learners as evidence accumulates. Conclusions use Bayesian probability-of-
+superiority, because a teacher asks "how sure are we that A is better", not
+"would we reject the null".
+
+It refuses to conclude without enough evidence, and reports genuinely
+equivalent arms as **inconclusive** rather than inventing a winner.
+
 ---
 
 ## The architecture
@@ -225,7 +278,7 @@ it.
 
 ## API
 
-91 operations. `GET /v1/openapi.json` is generated from the live route table.
+110 operations. `GET /v1/openapi.json` is generated from the live route table.
 
 ```
 GET  /health /health/deep /metrics /v1/capabilities
@@ -252,6 +305,13 @@ POST /v1/ingest                           curriculum in, graph out
 POST /v1/teacher/lesson-pack              the whole teaching pack
 POST /v1/classrooms/:id/grouping          who needs what, right now
 GET  /v1/analytics/effectiveness          is the OS itself working?
+
+POST /v1/agents/forge                     seven agents, QA with veto
+GET  /v1/agents/runs/:id                  the full reasoning trace
+POST /v1/safety/verify                    is this fit for a child, and why
+POST /v1/safety/redact                    strip PII, neutralise injections
+POST /v1/experiments/compare-modalities   which explanation actually works
+POST /v1/webhooks                         subscribe another platform
 ```
 
 Guards: API keys, token-bucket rate limiting (generation costs more), full
@@ -296,13 +356,14 @@ TypeScript on Node 22. **Zero native dependencies** — storage is `node:sqlite`
 so there is nothing to compile. Three runtime dependencies: `fastify`, `zod`,
 `@anthropic-ai/sdk`.
 
-252 tests covering convergence bounds, spacing effects, bandit convergence,
+286 tests covering convergence bounds, spacing effects, bandit convergence,
 Ohm's law, momentum conservation, 9:3:3:1 dihybrid ratios, IRT ability recovery,
-hostile model output, and that a random wrong answer is **not** diagnosed.
+hostile model output, prompt-injection neutralisation, and that a random wrong
+answer is **not** diagnosed.
 
 ```
 npm run doctor      11 self-checks
-npm test            252 tests
+npm test            286 tests
 npm run demo        the full loop, narrated
 npm run seed        idempotent curriculum seed
 npm start           the API

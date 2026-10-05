@@ -5,6 +5,7 @@ import { registerGuards } from './plugins/guards.js';
 import { coreRoutes } from './routes/core.routes.js';
 import { learningRoutes } from './routes/learning.routes.js';
 import { teachingRoutes } from './routes/teaching.routes.js';
+import { platformRoutes } from './routes/platform.routes.js';
 import { buildOpenApi } from './openapi.js';
 import { config } from '../core/config.js';
 import { logger } from '../core/logger.js';
@@ -47,6 +48,7 @@ export async function createServer(opts: BuildOptions = {}): Promise<Server> {
   await app.register(async (instance) => coreRoutes(instance, ctx));
   await app.register(async (instance) => learningRoutes(instance, ctx));
   await app.register(async (instance) => teachingRoutes(instance, ctx));
+  await app.register(async (instance) => platformRoutes(instance, ctx));
 
   if (config.features.openapi) {
     const spec = buildOpenApi(app);
