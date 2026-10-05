@@ -177,6 +177,9 @@ export class TwinService {
     const hintsUsed = input.hintsUsed ?? 0;
     const attempts = input.attempts ?? 1;
 
+    /* ---- BKT (read the prior belief before anything is written) ---- */
+    const record = this.repos.mastery.getOrInit(learner.id, conceptId);
+
     const response = this.repos.responses.add({
       learnerId: learner.id,
       itemId: input.itemId ?? null,
@@ -190,11 +193,11 @@ export class TwinService {
       attempts,
       misconceptionId: input.misconceptionId ?? null,
       modality: input.modality ?? null,
-      feedback: input.feedback ?? {},
+      // Record the belief BEFORE this answer, so a session summary can report
+      // what actually changed rather than comparing a value to itself.
+      feedback: { ...(input.feedback ?? {}), pKnownBefore: record.pKnown },
     });
 
-    /* ---- BKT ---- */
-    const record = this.repos.mastery.getOrInit(learner.id, conceptId);
     const params = paramsFor({
       choices: item?.choices.length,
       hintsUsed,

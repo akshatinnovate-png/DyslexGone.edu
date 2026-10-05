@@ -663,12 +663,13 @@ export class SessionEngine {
     const conceptsTouched = state.deliveredConceptIds.map((conceptId) => {
       const record = this.repos.mastery.get(session.learnerId, conceptId);
       const concept = this.repos.concepts.get(conceptId);
-      const sessionResponses = responses.filter((r) => r.conceptId === conceptId);
-      // Reconstruct "before" from the first response's recorded belief if we have it.
+      const sessionResponses = responses
+        .filter((r) => r.conceptId === conceptId)
+        .sort((a, b) => a.at.localeCompare(b.at));
       const after = record?.pKnown ?? 0;
-      const before = Number(
-        (sessionResponses[0]?.feedback as Record<string, unknown> | undefined)?.pKnownBefore ?? after,
-      );
+      // The earliest response in this session carries the belief we started with.
+      const recorded = (sessionResponses[0]?.feedback as Record<string, unknown> | undefined)?.pKnownBefore;
+      const before = typeof recorded === 'number' ? recorded : after;
       return {
         conceptId,
         label: concept?.label ?? conceptId,

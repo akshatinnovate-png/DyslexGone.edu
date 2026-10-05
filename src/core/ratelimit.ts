@@ -9,16 +9,20 @@ export class TokenBucket {
   constructor(
     private readonly capacity: number,
     private readonly refillPerMs: number,
-    private readonly burst = capacity,
+    /** Tokens a brand-new caller starts with. Defaults to a full bucket. */
+    private readonly initial = capacity,
   ) {}
 
   static perWindow(max: number, windowMs: number, burst?: number): TokenBucket {
-    return new TokenBucket(max, max / windowMs, burst ?? max);
+    // `burst` raises the ceiling above the steady-state rate; it never lowers
+    // the starting balance, or the first N requests of every process 429.
+    const capacity = Math.max(max, burst ?? max);
+    return new TokenBucket(capacity, max / windowMs, capacity);
   }
 
   take(key: string, cost = 1): RateDecision {
     const now = Date.now();
-    const b = this.buckets.get(key) ?? { tokens: this.burst, last: now };
+    const b = this.buckets.get(key) ?? { tokens: this.initial, last: now };
     const elapsed = now - b.last;
     b.tokens = Math.min(this.capacity, b.tokens + elapsed * this.refillPerMs);
     b.last = now;
