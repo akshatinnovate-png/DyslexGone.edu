@@ -223,9 +223,13 @@ $('#theme').addEventListener('click', () => {
         ${kv([
           ['Faulty rule', `<code>${esc(d.wrongRule)}</code>`],
           ['Which produces', `<code>${esc(d.reproducedAnswer)}</code> — exactly what the student wrote`],
-          ...(seed?.repairStrategy ? [['Repair', esc(seed.repairStrategy)]] : []),
-          ...(seed?.diagnosticPrompt ? [['Next question to ask', esc(seed.diagnosticPrompt)]] : []),
-        ])}`);
+          ...(seed ? [
+            ['Severity', `<span class="tag ${seed.severity === 'critical' ? 'bad' : seed.severity === 'major' ? 'serious' : 'warn'}">${esc(seed.severity)}</span>`],
+            ['What is going on', esc(seed.description)],
+            ['Repair strategy', `<code>${esc(seed.strategy)}</code>`],
+          ] : []),
+        ])}
+        ${seed?.steps?.length ? `<p style="margin:10px 0 4px"><strong>How to repair it</strong></p>${list(seed.steps.map(esc))}` : ''}`);
     }).join('');
   }
   run();
