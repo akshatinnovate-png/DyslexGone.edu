@@ -17,7 +17,8 @@
     "seed": "node --experimental-sqlite --import tsx/esm src/cli/seed.ts",
     "demo": "node --experimental-sqlite --import tsx/esm src/cli/demo.ts",
     "doctor": "node --experimental-sqlite --import tsx/esm src/cli/doctor.ts",
-    "test:watch": "node --experimental-sqlite --import tsx/esm --no-warnings --test --watch src/test/*.test.ts"
+    "test:watch": "node --experimental-sqlite --import tsx/esm --no-warnings --test --watch src/test/*.test.ts",
+    "build:web": "node scripts/build-web.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.68.0",
@@ -26,6 +27,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.18.9",
+    "esbuild": "^0.28.2",
     "playwright": "^1.63.0",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3"
