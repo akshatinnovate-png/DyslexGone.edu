@@ -34,7 +34,11 @@ jobs:
       - run: npm run build
       - run: npm test
       - run: npm run build:web
+      # enablement turns the Pages site on from inside the workflow, so the
+      # first run does not need anyone to visit the repository settings.
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
