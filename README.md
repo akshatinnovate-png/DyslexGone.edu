@@ -9,10 +9,18 @@ Not a chatbot. Not a video generator. Not a dyslexia reader. An intelligence
 layer that sits between curriculum and student, works out *why* a learner is
 stuck, and changes what it does about it.
 
+**[Try it live →](https://akshatinnovate-png.github.io/DyslexGone.edu/)**
+No install, no sign-up, no API key. The page bundles the engine source and runs
+it in your browser: the transformer, the misconception diagnosis, the animation
+compiler, ten lab solvers, the graph tracer and the quality checker all compute
+on load. Nothing on that page is pre-rendered.
+
 ```
 npm install && npm run build && npm run doctor   # 11/11 checks, ~200ms, no API key needed
+npm test                                         # 300 tests
 npm run demo                                     # the whole loop, narrated
 npm start                                        # http://localhost:8080
+npm run build:web                                # the browser demo, into site/
 ```
 
 ---
