@@ -383,3 +383,29 @@ describe('experiment conclusion under bandit allocation', () => {
     assert.match(report.recommendation, /stopped sampling/);
   });
 });
+
+test('pii redaction', async (t) => {
+  await t.test('removes a bracketed area code whole', () => {
+    const r = redactPii('My number is (415) 555-0147, call any time.');
+    assert.doesNotMatch(r.text, /\d|\(/, r.text);
+    assert.equal(r.found[0].label, 'phone number');
+  });
+
+  await t.test('redacts a local number only when a cue word qualifies it', () => {
+    assert.match(redactPii('Reach me at 555 0147 any time.').text, /\[phone number removed\]/);
+    // A worksheet full of three- and four-digit numbers is not contact details.
+    const sums = 'Add 100 2000 and 345 6789 to get the total.';
+    assert.equal(redactPii(sums).text, sums);
+    assert.equal(redactPii(sums).redacted, false);
+  });
+
+  await t.test('counts two patterns for the same label once', () => {
+    const r = redactPii('Call 555-0147 or (415) 555-0199.');
+    assert.equal(r.found.filter((f) => f.label === 'phone number').length, 1);
+  });
+
+  await t.test('still catches emails and national ids', () => {
+    const r = redactPii('Email a@b.com, SSN 123-45-6789.');
+    assert.deepEqual(r.found.map((f) => f.label).sort(), ['email address', 'national id']);
+  });
+});

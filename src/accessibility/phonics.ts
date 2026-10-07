@@ -1,5 +1,5 @@
 import { hyphenate, syllables, words } from '../core/textkit.js';
-import { IRREGULAR_WORDS } from './wordlists.js';
+import { IRREGULAR_WORDS, EASY_WORDS } from './wordlists.js';
 
 /** Grapheme -> phoneme mapping for decoding support, minimal pairs and rhyme. */
 
@@ -132,16 +132,25 @@ export function decodeSupport(wordIn: string): DecodeSupport {
     isIrregular: irregular,
     strategy,
     steps: [...new Set(steps)].slice(0, 6),
-    rhymes: rhymesFor(rime),
+    rhymes: rhymesFor(rime, word),
     minimalPairs: minimalPairs(lower).slice(0, 5),
   };
 }
 
 const RHYME_ONSETS = ['b', 'c', 'd', 'f', 'g', 'h', 'j', 'l', 'm', 'n', 'p', 'r', 's', 't', 'w', 'br', 'cl', 'st', 'tr', 'sh', 'ch'];
 
-export function rhymesFor(rime: string): string[] {
-  if (rime.length < 2) return [];
-  return RHYME_ONSETS.map((o) => o + rime).slice(0, 8);
+/** Rhyme families only help when the rhymes are real words a child knows.
+ *  Pasting onsets onto an arbitrary rime invents "botosynthesis", so the rime
+ *  must be a common one and every candidate must survive the word list. */
+export function rhymesFor(rime: string, exclude = ''): string[] {
+  if (rime.length < 2 || rime.length > 5 || !COMMON_RIMES.has(rime)) return [];
+  const out: string[] = [];
+  for (const o of RHYME_ONSETS) {
+    const cand = o + rime;
+    if (EASY_WORDS.has(cand) && cand !== rime && cand !== exclude) out.push(cand);
+    if (out.length >= 6) break;
+  }
+  return out;
 }
 
 /** Words that differ by exactly one letter - the classic discrimination drill. */
@@ -158,7 +167,7 @@ export function minimalPairs(word: string): string[] {
   return [...new Set(out)];
 }
 
-const COMMON_RIMES = new Set(['at','an','ap','ad','ag','am','ab','ed','en','et','eg','ell','est','in','it','ip','ig','id','ill','ing','ink','op','ot','og','ob','ock','ug','un','ut','up','ub','ump','ake','ame','ate','ine','ike','ime','ope','ore','oke','old','ail','ain','ead','eat','eep']);
+const COMMON_RIMES = new Set(['at','an','ap','ad','ag','am','ab','ed','en','et','eg','ell','est','in','it','ip','ig','id','ill','ing','ink','op','ot','og','ob','ock','ug','un','ut','up','ub','ump','ake','ame','ate','ine','ike','ime','ope','ore','oke','old','ail','ain','ead','eat','eep','ight','ound','all','ay','ee','ow','oon','ook','ide','ice','ine','ark','art','and','end','ick','ack','eck','uck','ell','ash','ush','ing','ong','ung','ight']);
 
 function plausible(w: string): boolean {
   if (/[^a-z]/.test(w)) return false;

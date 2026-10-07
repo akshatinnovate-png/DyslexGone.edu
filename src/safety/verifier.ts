@@ -205,9 +205,22 @@ export function verify(input: VerifyInput): VerificationResult {
 
 /* ---------------------------- privacy + injection -------------------------- */
 
-const PII_PATTERNS: { label: string; re: RegExp }[] = [
+/** `keep` names a capture group that is preserved; everything else the
+ *  pattern matched is replaced. It exists so a cue word can qualify a weak
+ *  number pattern without being swallowed by the redaction. */
+const PII_PATTERNS: { label: string; re: RegExp; keep?: number }[] = [
   { label: 'email address', re: /\b[\w.+-]+@[\w-]+\.[\w.]{2,}\b/g },
-  { label: 'phone number', re: /\b(?:\+?\d{1,3}[ -]?)?(?:\(?\d{3}\)?[ -]?)\d{3}[ -]?\d{4}\b/g },
+  // The leading boundary is captured and kept so a bracketed area code is
+  // removed whole, rather than leaving an orphan "(" behind.
+  { label: 'phone number', re: /(^|[^\w)])(?:\+?\d{1,3}[ -]?)?\(?\d{3}\)?[ -]?\d{3}[ -]?\d{4}\b/g, keep: 1 },
+  // A seven-digit local number is too weak a pattern to redact on sight - it
+  // would eat "100 2000" out of a maths worksheet - so it only counts when a
+  // cue word says it is a number to call. The cue is kept; the digits go.
+  {
+    label: 'phone number',
+    re: /\b((?:call|phone|telephone|tel|text|dial|contact|reach(?:ed|es)? (?:me|us|him|her|them))\b[^\n]{0,24}?)\b\d{3}[ -]\d{4}\b/gi,
+    keep: 1,
+  },
   { label: 'national id', re: /\b\d{3}-\d{2}-\d{4}\b/g },
   { label: 'card number', re: /\b(?:\d{4}[ -]?){3}\d{4}\b/g },
   { label: 'postal address', re: /\b\d{1,5}\s+[A-Z][a-z]+\s+(?:Street|St|Road|Rd|Avenue|Ave|Lane|Ln|Drive|Dr)\b/g },
@@ -224,12 +237,16 @@ export interface RedactionResult {
 export function redactPii(text: string): RedactionResult {
   let out = text;
   const found: { label: string; count: number }[] = [];
+  const counts = new Map<string, number>();
   for (const p of PII_PATTERNS) {
     const matches = out.match(p.re);
     if (!matches?.length) continue;
-    found.push({ label: p.label, count: matches.length });
-    out = out.replace(p.re, `[${p.label} removed]`);
+    counts.set(p.label, (counts.get(p.label) ?? 0) + matches.length);
+    out = p.keep === undefined
+      ? out.replace(p.re, `[${p.label} removed]`)
+      : out.replace(p.re, (...args) => `${args[p.keep!]}[${p.label} removed]`);
   }
+  for (const [label, count] of counts) found.push({ label, count });
   return { text: out, found, redacted: found.length > 0 };
 }
 

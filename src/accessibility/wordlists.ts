@@ -114,3 +114,31 @@ export const IRREGULAR_WORDS = new Set<string>([
   'business','beautiful','because','height','weight','eight','straight','answer','February','Wednesday','colonel',
   'yacht','queue','receipt','subtle','debt','doubt','rhythm','science','scissors','ocean','special','sure','sugar',
 ]);
+
+/** Greek and Latin morphemes common in school science and maths.
+ *  A learner who knows "photo- = light" can attack photosynthesis,
+ *  photograph and photon without being told each one separately, which is
+ *  the whole argument for teaching morphology over word lists. */
+export const MORPHEMES: Record<string, string> = {
+  photo: 'light', synth: 'put together', syn: 'together', chloro: 'green',
+  phyll: 'leaf', bio: 'life', geo: 'earth', thermo: 'heat', therm: 'heat',
+  hydro: 'water', aqua: 'water', aero: 'air', astro: 'star', helio: 'sun',
+  micro: 'very small', macro: 'very large', mega: 'very large', milli: 'a thousandth',
+  centi: 'a hundredth', kilo: 'a thousand', deci: 'a tenth', nano: 'a billionth',
+  mono: 'one', uni: 'one', bi: 'two', di: 'two', tri: 'three', quad: 'four',
+  penta: 'five', hexa: 'six', oct: 'eight', deca: 'ten', poly: 'many', multi: 'many',
+  semi: 'half', hemi: 'half', equi: 'equal', iso: 'equal', omni: 'all',
+  sub: 'under', super: 'above', trans: 'across', inter: 'between', intra: 'inside',
+  circum: 'around', peri: 'around', tele: 'far away', ex: 'out of', de: 'away from',
+  re: 'again', pre: 'before', post: 'after', anti: 'against', contra: 'against',
+  co: 'together', con: 'together', com: 'together', dis: 'apart', non: 'not', un: 'not',
+  meter: 'measure', metry: 'measuring', scope: 'to look at', graph: 'something written or drawn',
+  gram: 'something written', logy: 'the study of', ology: 'the study of',
+  sphere: 'a ball shape', cycle: 'a circle or a repeat', phon: 'sound', vis: 'see',
+  vid: 'see', dict: 'say', duct: 'lead', duc: 'lead', port: 'carry', struct: 'build',
+  scrib: 'write', script: 'write', spec: 'look', tract: 'pull', ject: 'throw',
+  form: 'shape', fract: 'break', frag: 'break', rupt: 'burst', mit: 'send', miss: 'send',
+  vert: 'turn', vers: 'turn', mob: 'move', mot: 'move', mov: 'move', gen: 'produce',
+  cyte: 'cell', cyto: 'cell', derm: 'skin', card: 'heart', neuro: 'nerve',
+  osis: 'a process', ase: 'an enzyme', ose: 'a sugar', itis: 'swelling',
+};

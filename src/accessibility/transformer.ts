@@ -7,6 +7,7 @@ import { buildAudioScript, describeVisual, toWebVtt, type AudioScript } from './
 import { decodingReport, type DecodeSupport } from './phonics.js';
 import { keyphrases, paragraphs, sentences, truncate, words } from '../core/textkit.js';
 import { clamp, round } from '../core/mathx.js';
+import { MORPHEMES, PLAIN_SWAPS } from './wordlists.js';
 
 /** ============ THE UNIVERSAL ACCESSIBILITY TRANSFORMER ============
  *
@@ -222,7 +223,12 @@ export function buildGlossary(
     const existing = seen.get(key);
     if (existing) {
       existing.importance = Math.max(existing.importance, importance);
-      if (plain.length > existing.plain.length) existing.plain = plain;
+      // A real gloss always beats the read-it-in-chunks filler, whatever the
+      // lengths are; between two real ones, the fuller one wins.
+      const filler = (x: string) => /^a (?:long word|key subject word)\b/.test(x);
+      if (filler(existing.plain) !== filler(plain)) {
+        if (filler(existing.plain)) existing.plain = plain;
+      } else if (plain.length > existing.plain.length) existing.plain = plain;
       return;
     }
     const decode = decodingReport(term, 1)[0];
@@ -234,26 +240,113 @@ export function buildGlossary(
     });
   };
 
-  for (const t of keepTerms) add(t, 'key subject word - learn this one, do not replace it', 1);
-  for (const g of simplification.glossary) add(g.term, g.plain, 0.7);
+  for (const t of keepTerms) {
+    add(t, defineTerm(t, text) ?? 'a key subject word - learn this one rather than replacing it', 1);
+  }
+  for (const g of simplification.glossary) add(g.term, defineTerm(g.term, text) ?? g.plain, 0.7);
   for (const k of keyphrases(text, 10)) {
-    if (k.phrase.split(' ').length <= 2 && k.phrase.length > 4) {
-      add(k.phrase, 'a load-bearing idea here - it carries the meaning of the passage', clamp(k.score / 12, 0.3, 0.95));
-    }
+    if (k.phrase.split(' ').length > 2 || k.phrase.length <= 4) continue;
+    // A glossary entry with no definition is worse than no entry: it tells
+    // the learner a word matters and then refuses to say what it means.
+    const plain = defineTerm(k.phrase, text);
+    if (plain) add(k.phrase, plain, clamp(k.score / 12, 0.3, 0.95));
   }
   return [...seen.values()].sort((a, b) => b.importance - a.importance).slice(0, 18);
+}
+
+/** A real definition, or nothing.
+ *  Three sources, in order of how much the learner can trust them: the plain
+ *  swap table, a definition the passage itself gives, and the word's Greek
+ *  and Latin parts. Guessing is not one of them, so a term this cannot
+ *  define is left out of the glossary rather than given filler. */
+export function defineTerm(term: string, context: string): string | null {
+  const t = term.toLowerCase().trim();
+  if (PLAIN_SWAPS[t]) return PLAIN_SWAPS[t];
+
+  const selfDef = selfDefinition(t, context);
+  if (selfDef) return selfDef;
+
+  // Morphology is per word. Running it over a phrase finds "hemi" inside
+  // "chemical energy" and tells a child it means half.
+  if (/\s/.test(t)) return null;
+
+  const parts = morphemesIn(t);
+  if (parts.length >= 2) {
+    return `${parts.map((p) => `"${p.part}" = ${p.meaning}`).join(', ')} - so roughly "${parts.map((p) => p.meaning).join(' ')}"`;
+  }
+  if (parts.length === 1 && parts[0].part.length >= 4) return `"${parts[0].part}" means ${parts[0].meaning}`;
+  return null;
+}
+
+/** "A chloroplast is a tiny green part of a cell" - the passage defining its
+ *  own vocabulary. Only a nominal predicate counts: "X is stored in glucose"
+ *  says what happens to X, not what X is. */
+function selfDefinition(term: string, context: string): string | null {
+  if (!context) return null;
+  const esc = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const m = context.match(new RegExp(`\\b${esc}\\b\\s+(is|are|means)\\s+(a|an|the)\\s+([^.;:]{6,80})`, 'i'));
+  if (!m) return null;
+  const body = m[3].trim();
+  // A passive ("is a result of being transported") is a process, not a gloss.
+  if (/^(?:result|product|process|consequence)\s+of\b/i.test(body)) return null;
+  return `${m[1].toLowerCase() === 'are' ? 'they are' : 'it is'} ${m[2].toLowerCase()} ${body}`;
+}
+
+/** Morphemes, anchored. A prefix at the start and a suffix at the end are
+ *  what a learner can actually see; an interior match is only trusted when
+ *  it is long enough that it cannot be an accident ("synth", not "re"). */
+export function morphemesIn(word: string): { part: string; meaning: string }[] {
+  const keys = Object.keys(MORPHEMES).sort((a, b) => b.length - a.length);
+  const taken: boolean[] = new Array(word.length).fill(false);
+  const found: { at: number; part: string; meaning: string }[] = [];
+  const claim = (at: number, part: string) => {
+    if (at < 0 || taken.slice(at, at + part.length).some(Boolean)) return false;
+    for (let i = at; i < at + part.length; i++) taken[i] = true;
+    found.push({ at, part, meaning: MORPHEMES[part] });
+    return true;
+  };
+
+  // Prefix first: it is the part a reader meets first, and claiming it stops
+  // "ology" from swallowing the "o" that "bio" needs.
+  for (const k of keys) if (k.length >= 2 && word.startsWith(k) && k.length < word.length) { claim(0, k); break; }
+  for (const k of keys) if (k.length >= 3 && word.endsWith(k) && claim(word.length - k.length, k)) break;
+  for (const k of keys) if (k.length >= 5) claim(word.indexOf(k), k);
+
+  return found.sort((a, b) => a.at - b.at).map(({ part, meaning }) => ({ part, meaning }));
 }
 
 /** Convert exposition into a question ladder - the socratic modality. */
 export function toSocratic(text: string, title: string): string[] {
   const sents = sentences(text);
   const out: string[] = [`Before we start: what do you already know about ${title.toLowerCase()}?`];
+  // A ladder that asks the same thing six times stops being a ladder, so each
+  // rung draws from a different question type than the rung before it.
+  const RESTATE = [
+    (q: string) => `Say this in your own words: "${q}"`,
+    (q: string) => `What would you point at to show someone "${q}"?`,
+    (q: string) => `Which single word in "${q}" could you not drop without losing the meaning?`,
+  ];
+  const CAUSAL = [
+    (q: string) => `Why would that be true: "${q}"?`,
+    (q: string) => `What would have to change for "${q}" to stop being true?`,
+    (q: string) => `What causes what here: "${q}"?`,
+  ];
+  const PREDICT = [
+    (q: string) => `What happens next, given "${q}"?`,
+    (q: string) => `If you doubled one quantity in "${q}", what follows?`,
+    (q: string) => `What would you expect to see, if "${q}"?`,
+  ];
+  let restate = 0; let causal = 0; let predict = 0; let lastKind = '';
   for (const s of sents.slice(0, 6)) {
-    const ws = words(s);
-    if (ws.length < 5) continue;
-    if (/\bbecause\b|\bso\b|\bsince\b/i.test(s)) out.push(`Why would that be true: "${truncate(s, 90)}"?`);
-    else if (/\bis\b|\bare\b|\bmeans\b/i.test(s)) out.push(`How would you say this in your own words: "${truncate(s, 90)}"?`);
-    else out.push(`What do you predict happens next, given "${truncate(s, 80)}"?`);
+    if (words(s).length < 5) continue;
+    const q = truncate(s, 90);
+    let kind = /\bbecause\b|\bso\b|\bsince\b/i.test(s) ? 'causal'
+      : /\bis\b|\bare\b|\bmeans\b/i.test(s) ? 'restate' : 'predict';
+    if (kind === lastKind) kind = kind === 'restate' ? 'predict' : 'restate';
+    lastKind = kind;
+    if (kind === 'causal') out.push(CAUSAL[causal++ % CAUSAL.length](q));
+    else if (kind === 'restate') out.push(RESTATE[restate++ % RESTATE.length](q));
+    else out.push(PREDICT[predict++ % PREDICT.length](q));
   }
   out.push(`Last one: where would this idea break down or stop working?`);
   return out.slice(0, 8);
