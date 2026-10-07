@@ -25,9 +25,15 @@ export interface SimplifyResult {
   glossary: { term: string; plain: string }[];
 }
 
+// Ordered longest-phrase-first so 'as a result of' is never split as 'as'.
 const SPLIT_CONNECTIVES = [
+  'in order to', 'as a result', 'which means', 'for this reason', 'at which point',
+  'in addition', 'for example', 'for instance', 'resulting in', 'leading to',
+  'rather than', 'instead of', 'such that', 'so that', 'in which', 'by which',
   'because', 'although', 'though', 'whereas', 'while', 'however', 'therefore',
-  'so that', 'in order to', 'which means', 'but', 'and then', 'as a result',
+  'consequently', 'furthermore', 'moreover', 'meanwhile', 'nevertheless',
+  'whereby', 'wherein', 'thereby', 'thereafter', 'and then', 'and so',
+  'since', 'unless', 'until', 'whenever', 'but', 'yet',
 ];
 
 /** Passive -> active only happens when we can name the verb with certainty.
@@ -253,11 +259,41 @@ function matchCase(source: string, replacement: string): string {
   return replacement;
 }
 
+/** A clause opening with a subordinator is grammatically dependent: promoting
+ *  it to its own sentence ("Since the denominator represents the parts.")
+ *  trades a long sentence for a fragment, which is a worse read. */
+const SUBORDINATOR_START = /^(?:since|because|although|though|while|whereas|unless|until|whenever|whereby|wherein|if|when|as|after|before|once|whether|given that|provided that|so that|in order to|such that)\b/i;
+
+/** A trailing prepositional phrase is a modifier, not a sentence - "In a
+ *  process that needs oxygen." has a verb but no subject of its own. */
+const PREPOSITION_START = /^(?:in|on|at|by|with|without|from|for|of|to|into|onto|upon|during|through|throughout|under|over|above|below|across|along|among|between|beside|besides|behind|beyond|toward|towards|against|about|after|before|within|despite|regarding|concerning|per|via|like|unlike)\b/i;
+
+/** Can this span stand alone as a sentence? */
+function standsAlone(span: string): boolean {
+  const t = span.trim();
+  return hasFiniteVerb(t) && !SUBORDINATOR_START.test(t) && !PREPOSITION_START.test(t);
+}
+
 /** Split on connectives and relative clauses until every piece fits the budget.
  *  Every piece must be a real sentence - a fragment is harder to read than the
  *  long sentence it came from. */
 export function splitLongSentence(sentence: string, maxWords: number, ops: SimplifyResult['operations'] = []): string[] {
   if (words(sentence).length <= maxWords) return [sentence];
+
+  // "Since X, Y" front-loads the reader with a condition before there is
+  // anything to attach it to. Y is the claim, so lead with it and follow with
+  // the reason - the same two clauses, in the order comprehension needs.
+  const fronted = sentence.match(/^(since|because|although|though|while|whereas|unless|until|whenever|when|if|after|before|once)\s+(.{10,}?),\s+(.{10,})$/i);
+  if (fronted) {
+    const [, conn, dependent, main] = fronted;
+    if (standsAlone(main) && hasFiniteVerb(dependent)) {
+      ops.push({ kind: 'reordered', from: truncate(sentence, 70), to: 'main clause first, reason second', reason: 'fronted subordinate clause delays the point' });
+      return [
+        ...splitLongSentence(punctuate(capitalize(main)), maxWords, ops),
+        ...splitLongSentence(punctuate(bridge(conn, dependent)), maxWords, ops),
+      ];
+    }
+  }
 
   for (const conn of SPLIT_CONNECTIVES) {
     const re = new RegExp(`(.{12,}?)[,;]?\\s+${conn}\\s+(.{12,})`, 'i');
@@ -265,7 +301,7 @@ export function splitLongSentence(sentence: string, maxWords: number, ops: Simpl
     if (!m) continue;
     const leftRaw = m[1];
     const rightRaw = m[2].trim();
-    if (!hasFiniteVerb(leftRaw) || !hasFiniteVerb(rightRaw)) continue;
+    if (!standsAlone(leftRaw) || !hasFiniteVerb(rightRaw)) continue;
     const left = punctuate(leftRaw);
     const right = punctuate(bridge(conn, derelativize(rightRaw)));
     ops.push({ kind: 'split', from: truncate(sentence, 70), to: `2 sentences at "${conn}"`, reason: 'sentence over length budget' });
@@ -273,8 +309,14 @@ export function splitLongSentence(sentence: string, maxWords: number, ops: Simpl
   }
 
   // Relative clause: ", which ..." becomes its own sentence with a real subject.
-  const rel = sentence.match(/^(.{14,}?),\s+(which|who|that|where|whose)\s+(.{12,})$/i);
-  if (rel && hasFiniteVerb(rel[1]) && hasFiniteVerb(rel[3])) {
+  // The comma is optional: a restrictive clause ("energy which is stored...")
+  // loads working memory exactly as hard as a non-restrictive one, and it is
+  // the shape textbooks actually use. Requiring a copula after the pronoun in
+  // the commaless case keeps "the plants that photosynthesise" intact, where
+  // promoting the clause would strand the noun it defines.
+  const rel = sentence.match(/^(.{14,}?),\s+(which|who|that|where|whose)\s+(.{12,})$/i)
+    ?? sentence.match(/^(.{14,}?)\s+(which|who|whose)\s+((?:is|are|was|were|can|could|will|has|have|had)\s+.{8,})$/i);
+  if (rel && standsAlone(rel[1]) && hasFiniteVerb(rel[3])) {
     const left = punctuate(rel[1]);
     const right = punctuate(derelativize(`${rel[2]} ${rel[3]}`));
     ops.push({ kind: 'split_relative', from: truncate(sentence, 70), to: 'relative clause promoted to its own sentence', reason: 'embedded clause adds memory load' });
@@ -290,7 +332,7 @@ export function splitLongSentence(sentence: string, maxWords: number, ops: Simpl
       const leftRaw = sentence.slice(0, at);
       const rightRaw = sentence.slice(at + 1).trim();
       if (words(leftRaw).length < 4 || words(rightRaw).length < 4) continue;
-      if (!hasFiniteVerb(leftRaw) || !hasFiniteVerb(rightRaw)) continue;
+      if (!standsAlone(leftRaw) || !standsAlone(rightRaw)) continue;
       if (isAppositive(rightRaw)) continue;
       // A comma separating a subject from its verb is not a sentence boundary.
       if (VERB_START.test(rightRaw.trim())) continue;
@@ -338,7 +380,22 @@ const BRIDGES: Record<string, string> = {
   because: 'Here is why: ', although: 'But ', though: 'But ', whereas: 'On the other hand, ',
   while: 'At the same time, ', however: 'But ', therefore: 'So ', 'so that': 'That way, ',
   'in order to': 'The goal is to ', 'which means': 'That means ', but: 'But ',
-  'and then': 'Then ', 'as a result': 'So ',
+  'and then': 'Then ', 'as a result': 'So ', 'as a result of': 'This happens because of ',
+  // 'whereby' and friends introduce the mechanism, so the new sentence names
+  // it as the mechanism instead of dropping the reader into a bare clause.
+  whereby: 'Here is how it works: ', wherein: 'Inside it, ', 'in which': 'Inside it, ',
+  'by which': 'Here is how: ', thereby: 'That ', thereafter: 'After that, ',
+  consequently: 'So ', furthermore: 'Also, ', moreover: 'Also, ',
+  'in addition': 'Also, ', meanwhile: 'At the same time, ', nevertheless: 'Even so, ',
+  since: 'Here is why: ', unless: 'This stops if ', until: 'This lasts until ',
+  whenever: 'Every time ', yet: 'But ', 'and so': 'So ',
+  'for example': 'For example, ', 'for instance': 'For example, ',
+  'for this reason': 'That is why ', 'at which point': 'Then ',
+  when: 'This happens when ', if: 'This happens if ', after: 'This happens after ',
+  before: 'This happens before ', once: 'This happens once ',
+  'rather than': 'It is not ', 'instead of': 'It is not ',
+  'resulting in': 'The result is ', 'leading to': 'That leads to ',
+  'such that': 'The result is that ',
 };
 
 function bridge(conn: string, rest: string): string {
